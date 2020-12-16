@@ -5,6 +5,11 @@
 * 掘金文档： [https://www.myquant.cn/docs/python/39?](https://www.myquant.cn/docs/python/39?)
 * 企业微信群聊机器人文档：[https://work.weixin.qq.com/api/doc/90000/90136/91770](https://work.weixin.qq.com/api/doc/90000/90136/91770)
 
+## 运行环境说明
+
+* python >= 3.7
+* czsc >= 0.5.8
+
 ## 入口文件说明
 
 执行前，需要在 `src/conf.py` 中设置一些参数
