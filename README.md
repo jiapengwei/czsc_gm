@@ -8,15 +8,13 @@
 ## 运行环境说明
 
 * python >= 3.7
-* czsc >= 0.5.8
+* czsc >= 0.6.5
 
 ## 入口文件说明
 
 执行前，需要在 `src/conf.py` 中设置一些参数
 
 1. `run_gm_1min.py` - 按1分钟 on_bar 执行策略
-2. `run_gm_tick.py` - 按tick数据执行策略
-3. `run_gm_alpha.py` - 执行股票指数增强策略
 
 ## 回测结果说明
 

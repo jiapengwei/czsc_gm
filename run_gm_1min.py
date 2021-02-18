@@ -1,38 +1,24 @@
 # coding: utf-8
+import traceback
 from src.gm_utils import *
-from src.trader import traders
 from src import conf
 
+set_gm_token(conf.gm_token)
 
 def adjust_position(context, symbol):
-    bars = context.data(symbol=symbol, frequency='60s', count=5, fields='symbol,eob,open,close,high,low,volume')
+    bars = context.data(symbol=symbol, frequency='60s', count=100, fields='symbol,eob,open,close,high,low,volume')
     trader = context.symbols_map[symbol]['trader']
     bars = format_kline(bars)
-    bars = bars.to_dict("records")
-    bars_new = [x for x in bars if x['dt'] > trader.kg.end_dt]
+    bars_new = [x for x in bars if x.dt > trader.kg.end_dt]
     if bars_new:
-        trader.update_kg(bars_new)
-        trader.update_signals()
+        trader.update_factors(bars_new)
     context.symbols_map[symbol]['trader'] = trader
-    context.desc = str(context.symbols_map)
 
-    if not trader.is_decision_point():
-        return
-
-    last_bar = bars_new[-1]
-    if context.mode == MODE_BACKTEST:
-        if last_bar['dt'].hour == 14 and last_bar['dt'].minute == 30:
-            print("{} - {} - {}".format(trader.s['symbol'], trader.s['dt'], trader.s['latest_price']))
-    else:
-        if last_bar['dt'].minute % 30 == 0:
-            print("{} - {} - {}".format(trader.s['symbol'], trader.s['dt'], trader.s['latest_price']))
+    last_bar = bars[-1]
+    if last_bar.dt.minute % 30 == 0:
+        print("{} - {} - {}".format(trader.s['symbol'], trader.s['dt'], trader.s['close']))
+        if context.mode != MODE_BACKTEST:
             take_snapshot(context, trader, name='快照')
-
-    file_s = os.path.join(context.cache_path, "{}_signals.txt".format(symbol))
-    with open(file_s, 'a', encoding="utf-8") as f:
-        row = dict(trader.s)
-        row['dt'] = row['dt'].strftime("%Y-%m-%d %H:%M:%S")
-        f.write(str(row) + "\n")
 
     exchange = symbol.split(".")[0]
     if exchange in ["SZSE", "SHSE"]:
@@ -42,12 +28,9 @@ def adjust_position(context, symbol):
 
 
 def init(context):
-    if context.mode == MODE_BACKTEST:
-        data_path = "logs/1min_{}".format(datetime.now().strftime("%Y%m%d%H%M%S"))
-    else:
-        data_path = "logs/trader"
+    data_path = conf.data_path
     context.wx_key = conf.wx_token
-    context.share_id = conf.share_account_id    # 股票账户ID
+    context.share_id = conf.share_account_id   # 股票账户ID
     context.future_id = conf.future_account_id  # 期货账户ID
 
     cache_path = os.path.join(data_path, "cache")
@@ -58,14 +41,41 @@ def init(context):
     context.cache_path = cache_path
     context.file_orders = os.path.join(data_path, "orders.txt")
 
-    # 交易标的配置：mp 为最大持仓量，小于1，按百分比计算，大于1，表示交易手数
-    # 支持同时对股票和期货进行交易
-    symbols_map = {
-        "CFFEX.IH2010": {"mp": 20, "trader": "FutureTraderV1"},
-        "SZSE.000795": {"mp": 0.998, "trader": "ShareTraderV3"},
-    }
+    # 交易因子定义
+    long_open_factors = [
+        "日线笔因子@DLA2~30分钟三买",
+        "日线笔因子@DLC1~5分钟近七笔为底背弛&1分钟近五笔为大级别底分",
+        "日线笔因子@DLB8~15分钟近七笔为底背弛",
+        "日线笔因子@DLB9~15分钟近九笔为底背弛",
+        "日线笔因子@DLB5~60分钟近七笔为底背弛",
+        "日线笔因子@DLA4~15分钟近七笔为BaA式右侧底&15分钟第N笔对应1分钟不少于5笔",
+        "日线笔因子@DLA3~15分钟三买&15分钟第N笔对应1分钟不少于5笔",
+        "日线笔因子@DLA2a~30分钟三买&30分钟最近一个向上笔创新高",
+        "日线笔因子@DLD1~5分钟近七笔为底背弛&1分钟近五笔为大级别底分",
+        "日线笔因子@DLB2~30分钟近七笔为底背弛",
+    ]
 
-    subscribe(",".join(symbols_map.keys()), frequency='60s', count=300, wait_group=True, wait_group_timeout="300s")
+    long_close_factors = [
+        "日线笔因子@DSA1~30分钟近五笔为三卖",
+        "日线笔因子@DSB1~30分钟近七笔为顶背弛",
+        "日线笔因子@DSC1~30分钟近五笔为大级别顶分",
+    ]
+
+    if context.mode == MODE_BACKTEST:
+        # mp 小于1，按百分比下单
+        symbols_map = {
+            # "SHSE.603027": {"mp": 0.8, "factors": {"long_open_factors": long_open_factors,
+            #                                        "long_close_factors": long_close_factors,
+            #                                        "version": "603027@2021-02-17"}},
+            # "SZSE.002739": {"mp": 0.8, "factors": {"long_open_factors": long_open_factors,
+            #                                        "long_close_factors": long_close_factors,
+            #                                        "version": "603027@2021-02-17"}},
+            "SZSE.002588": {"mp": 0.8, "factors": {"long_open_factors": long_open_factors,
+                                                   "long_close_factors": long_close_factors,
+                                                   "version": "002588@2021-02-17"}},
+        }
+
+    subscribe(",".join(symbols_map.keys()), frequency='60s', count=300, wait_group=False)
 
     if context.mode == MODE_BACKTEST:
         context.logger.info("回测配置：")
@@ -77,9 +87,8 @@ def init(context):
         context.logger.info("实盘开始 ...")
 
     for symbol in symbols_map.keys():
-        Trader = traders[symbols_map[symbol]["trader"]]
-        kg = get_init_kg(context, symbol, generator=KlineGeneratorBy1Min, freqs=Trader.freqs, max_count=500)
-        trader = Trader(kg, bi_mode="new", max_count=300)
+        kg = get_init_kg(context, symbol, generator=KlineGeneratorBy1Min, max_count=1000)
+        trader = GmTrader(kg, factors=symbols_map[symbol]["factors"])
         symbols_map[symbol]['trader'] = trader
         context.logger.info("{} 初始化完成，当前时间：{}".format(symbol, trader.end_dt))
 
@@ -110,8 +119,8 @@ if __name__ == '__main__':
         token='15bd09a572bff415a52b60001504f0a2dc38fa6e',
         strategy_id='add4163e-1825-11eb-a4e8-3cf0110437a2',
         mode=MODE_BACKTEST,
-        backtest_start_time='2020-09-01 08:30:00',
-        backtest_end_time='2020-10-15 15:30:00',
+        backtest_start_time='2020-01-01 08:30:00',
+        backtest_end_time='2020-12-31 15:30:00',
         backtest_initial_cash=100000000,
         backtest_transaction_ratio=1,
         backtest_commission_ratio=0.001,

@@ -1,3 +1,4 @@
+data_path = "D:/data/gm_logs/trader"
 
 # 掘金账户的 token
 gm_token = "15bd09a572bff415a52b60001504f0a2dc*****"
