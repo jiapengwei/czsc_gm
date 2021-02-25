@@ -10,7 +10,7 @@ from czsc.enum import Factors
 from czsc.utils.qywx import push_file, push_msg, push_text
 import os
 
-assert czsc.__version__ >= "0.6.5", "czsc 的版本必须大于等于 0.6.5"
+assert czsc.__version__ == "0.6.5", "czsc 的版本必须等于 0.6.5"
 
 file_token = os.path.join(os.path.expanduser("~"), "gm_token.txt")
 
